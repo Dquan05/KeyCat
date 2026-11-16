@@ -1,0 +1,8 @@
+.agents/
+node_modules/
+dist/
+coverage/
+apps/api/src/generated/
+pnpm-lock.yaml
+KeyCat_PHAN_TICH_THIET_KE_V3.md
+docs/

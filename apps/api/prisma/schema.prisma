@@ -1,0 +1,468 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AccountRole {
+  MEMBER
+  ADMIN
+
+  @@map("account_role")
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+
+  @@map("account_status")
+}
+
+enum VerificationPurpose {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+
+  @@map("verification_purpose")
+}
+
+enum PublicationStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+
+  @@map("publication_status")
+}
+
+enum LessonType {
+  INTRO
+  KEY_DRILL
+  REVIEW
+  PRACTICE
+
+  @@map("lesson_type")
+}
+
+model User {
+  id              String    @id @default(uuid()) @db.Uuid
+  email           String    @unique @db.VarChar(320)
+  username        String    @unique @db.VarChar(80)
+  passwordHash    String    @map("password_hash")
+  displayName     String?   @map("display_name") @db.VarChar(160)
+  avatarUrl       String?   @map("avatar_url")
+  role            AccountRole   @default(MEMBER)
+  status          AccountStatus @default(ACTIVE)
+  emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz(6)
+  timezone        String?   @db.VarChar(80)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  refreshSessions    RefreshSession[]
+  verificationTokens VerificationToken[]
+  settings           UserSettings?
+  contentVersions    ContentVersion[]
+  customTemplates    CustomTemplate[]
+  practiceAttempts   PracticeAttempt[]
+  lessonProgress     LessonProgress[]
+
+  @@map("users")
+}
+
+model RefreshSession {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  tokenHash     String    @unique @map("token_hash")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz(6)
+  rotatedFromId String?   @unique @map("rotated_from_id") @db.Uuid
+  deviceLabel   String?   @map("device_label") @db.VarChar(160)
+  lastUsedAt    DateTime? @map("last_used_at") @db.Timestamptz(6)
+
+  user        User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  rotatedFrom RefreshSession? @relation("SessionRotation", fields: [rotatedFromId], references: [id], onDelete: Restrict)
+  rotatedInto RefreshSession[] @relation("SessionRotation")
+
+  @@index([userId, revokedAt, expiresAt])
+  @@map("refresh_sessions")
+}
+
+model VerificationToken {
+  id        String              @id @default(uuid()) @db.Uuid
+  userId    String              @map("user_id") @db.Uuid
+  purpose   VerificationPurpose
+  tokenHash String              @unique @map("token_hash")
+  expiresAt DateTime            @map("expires_at") @db.Timestamptz(6)
+  usedAt    DateTime?           @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, purpose, expiresAt])
+  @@map("verification_tokens")
+}
+
+model UserSettings {
+  userId        String   @id @map("user_id") @db.Uuid
+  uiLanguage    String   @default("vi") @map("ui_language") @db.VarChar(2)
+  themeKey      String   @default("light") @map("theme_key") @db.VarChar(80)
+  typingFont    String?  @map("typing_font") @db.VarChar(80)
+  fontSize      Int?     @map("font_size")
+  showKeyboard  Boolean  @default(true) @map("show_keyboard")
+  showHands     Boolean  @default(true) @map("show_hands")
+  soundEnabled  Boolean  @default(false) @map("sound_enabled")
+  prefsJson     Json     @default("{}") @map("prefs_json")
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@map("user_settings")
+}
+
+model Course {
+  id          String            @id @default(uuid()) @db.Uuid
+  slug        String            @unique @db.VarChar(160)
+  title       String            @db.VarChar(200)
+  locale      String            @db.VarChar(10)
+  status      PublicationStatus @default(DRAFT)
+  description String?
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  publishedAt DateTime?         @map("published_at") @db.Timestamptz(6)
+
+  sections Section[]
+  lessons  Lesson[]
+
+  @@map("courses")
+}
+
+model Section {
+  id         String   @id @default(uuid()) @db.Uuid
+  courseId   String   @map("course_id") @db.Uuid
+  title      String   @db.VarChar(200)
+  orderIndex Int      @map("order_index")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  course  Course   @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  lessons Lesson[]
+
+  @@unique([courseId, orderIndex])
+  @@unique([id, courseId])
+  @@map("sections")
+}
+
+model Lesson {
+  id           String            @id @default(uuid()) @db.Uuid
+  courseId     String            @map("course_id") @db.Uuid
+  sectionId    String            @map("section_id") @db.Uuid
+  courseOrdinal Int              @map("course_ordinal")
+  slug         String            @db.VarChar(160)
+  title        String            @db.VarChar(200)
+  lessonType   LessonType        @map("lesson_type")
+  goalWpm      Decimal?          @map("goal_wpm") @db.Decimal(8, 2)
+  minAccuracy  Decimal?          @map("min_accuracy") @db.Decimal(5, 2)
+  minPassWpm   Decimal?          @map("min_pass_wpm") @db.Decimal(8, 2)
+  policyJson   Json              @default("{}") @map("policy_json")
+  status       PublicationStatus @default(DRAFT)
+  isActive     Boolean           @default(true) @map("is_active")
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  section Section @relation(fields: [sectionId, courseId], references: [id, courseId], onDelete: Restrict)
+  practiceTarget PracticeTarget?
+  progress       LessonProgress[]
+
+  @@unique([courseId, courseOrdinal])
+  @@unique([courseId, slug])
+  @@index([sectionId, courseId])
+  @@map("lessons")
+}
+
+enum SpeedMode {
+  TIME
+  WORDS
+
+  @@map("speed_mode")
+}
+
+enum TargetKind {
+  LESSON
+  SPEED_TEST
+  CUSTOM_TEMPLATE
+
+  @@map("target_kind")
+}
+
+enum ContentKind {
+  TEXT
+  SPEED_CONFIG
+  GAME_CONTENT
+  INTRO
+
+  @@map("content_kind")
+}
+
+enum TemplateType {
+  TEXT
+  GAME_CONTENT
+
+  @@map("template_type")
+}
+
+enum TemplateVisibility {
+  PRIVATE
+  PUBLIC
+
+  @@map("template_visibility")
+}
+
+enum TemplateStatus {
+  DRAFT_PRIVATE
+  PENDING_REVIEW
+  APPROVED_PUBLISHED
+  REJECTED
+  HIDDEN
+  ARCHIVED
+
+  @@map("template_status")
+}
+
+enum AttemptMode {
+  LESSON
+  SPEED_TIME
+  SPEED_WORDS
+  TEMPLATE_TEXT
+  TEMPLATE_GAME_CONTENT
+
+  @@map("attempt_mode")
+}
+
+enum AttemptStatus {
+  READY
+  RUNNING
+  PAUSED
+  COMPLETED
+  FAILED
+  ABANDONED
+  EXPIRED
+
+  @@map("attempt_status")
+}
+
+enum FinalizationOperation {
+  FINISH
+  ABANDON
+
+  @@map("finalization_operation")
+}
+
+// Supporting owner tables only. Their APIs and business workflows belong to later tasks.
+model SpeedTestConfig {
+  id                 String            @id @default(uuid()) @db.Uuid
+  slug               String            @unique @db.VarChar(160)
+  mode               SpeedMode
+  timeLimitSec       Int?              @map("time_limit_sec")
+  wordTarget         Int?              @map("word_target")
+  punctuationEnabled Boolean           @default(false) @map("punctuation_enabled")
+  numbersEnabled     Boolean           @default(false) @map("numbers_enabled")
+  wordPoolVersion    String            @map("word_pool_version") @db.VarChar(80)
+  generatorVersion   String            @map("generator_version") @db.VarChar(80)
+  status             PublicationStatus @default(DRAFT)
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  practiceTarget PracticeTarget?
+
+  @@map("speed_test_configs")
+}
+
+model CustomTemplate {
+  id         String             @id @default(uuid()) @db.Uuid
+  creatorId  String             @map("creator_id") @db.Uuid
+  title      String             @db.VarChar(200)
+  type       TemplateType
+  visibility TemplateVisibility @default(PRIVATE)
+  status     TemplateStatus     @default(DRAFT_PRIVATE)
+  createdAt  DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  creator        User            @relation(fields: [creatorId], references: [id], onDelete: Restrict)
+  practiceTarget PracticeTarget?
+
+  @@map("custom_templates")
+}
+
+model PracticeTarget {
+  id                      String     @id @default(uuid()) @db.Uuid
+  kind                    TargetKind
+  lessonId                String?    @unique @map("lesson_id") @db.Uuid
+  speedConfigId           String?    @unique @map("speed_config_id") @db.Uuid
+  customTemplateId        String?    @unique @map("custom_template_id") @db.Uuid
+  currentContentVersionId String?    @map("current_content_version_id") @db.Uuid
+  createdAt               DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  lesson         Lesson?          @relation(fields: [lessonId], references: [id], onDelete: Restrict)
+  speedConfig    SpeedTestConfig? @relation(fields: [speedConfigId], references: [id], onDelete: Restrict)
+  customTemplate CustomTemplate?  @relation(fields: [customTemplateId], references: [id], onDelete: Restrict)
+  contentVersions ContentVersion[]
+  attempts       PracticeAttempt[]
+
+  @@map("practice_targets")
+}
+
+model ContentVersion {
+  id          String      @id @default(uuid()) @db.Uuid
+  targetId    String      @map("target_id") @db.Uuid
+  versionNo   Int         @map("version_no")
+  contentKind ContentKind @map("content_kind")
+  contentText String?     @map("content_text")
+  configJson  Json        @map("config_json")
+  contentHash String      @map("content_hash") @db.VarChar(64)
+  sourceName  String?     @map("source_name") @db.VarChar(160)
+  sourceUrl   String?     @map("source_url")
+  license     String?     @db.VarChar(80)
+  attribution String?
+  createdById String?     @map("created_by") @db.Uuid
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt DateTime?   @map("published_at") @db.Timestamptz(6)
+
+  target    PracticeTarget    @relation(fields: [targetId], references: [id], onDelete: Restrict)
+  createdBy User?             @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  attempts  PracticeAttempt[]
+
+  @@unique([targetId, versionNo])
+  @@unique([id, targetId])
+  @@map("content_versions")
+}
+
+model PracticeAttempt {
+  id               String        @id @default(uuid()) @db.Uuid
+  userId           String        @map("user_id") @db.Uuid
+  targetId         String        @map("target_id") @db.Uuid
+  contentVersionId String        @map("content_version_id") @db.Uuid
+  mode             AttemptMode
+  status           AttemptStatus @default(READY)
+  configSnapshot   Json          @map("config_snapshot")
+  scoringVersion   String        @map("scoring_version") @db.VarChar(80)
+  typingCoreVersion String       @map("typing_core_version") @db.VarChar(80)
+  startedAt        DateTime?     @map("started_at") @db.Timestamptz(6)
+  firstInputAt     DateTime?     @map("first_input_at") @db.Timestamptz(6)
+  endedAt          DateTime?     @map("ended_at") @db.Timestamptz(6)
+  expiresAt        DateTime      @map("expires_at") @db.Timestamptz(6)
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user           User                         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  target         PracticeTarget               @relation(fields: [targetId], references: [id], onDelete: Restrict)
+  contentVersion ContentVersion               @relation(fields: [contentVersionId, targetId], references: [id, targetId], onDelete: Restrict)
+  result         PracticeResult?
+  keyStats       PracticeKeyStat[]
+  partialSnapshot PracticePartialSnapshot?
+  finalizationRequests AttemptFinalizationRequest[]
+  bestForProgress LessonProgress[]
+
+  @@index([userId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([targetId, createdAt(sort: Desc)])
+  @@map("practice_attempts")
+}
+
+model PracticeResult {
+  attemptId          String    @id @map("attempt_id") @db.Uuid
+  effectiveWpm       Decimal?  @map("effective_wpm") @db.Decimal(10, 2)
+  firstTryAccuracy   Decimal?  @map("first_try_accuracy") @db.Decimal(5, 2)
+  accuracyFinal      Decimal?  @map("accuracy_final") @db.Decimal(5, 2)
+  grossWpm           Decimal?  @map("gross_wpm") @db.Decimal(10, 2)
+  durationMs         BigInt?   @map("duration_ms")
+  scoredCorrectCount Int?      @map("scored_correct_count")
+  score              Int?
+  stars              Int?      @db.SmallInt
+  passed             Boolean?
+  verified           Boolean
+  eligibleForRanking Boolean  @map("eligible_for_ranking")
+  metricJson         Json     @default("{}") @map("metric_json")
+  scoringVersion     String   @map("scoring_version") @db.VarChar(80)
+  finalizedAt        DateTime @default(now()) @map("finalized_at") @db.Timestamptz(6)
+
+  attempt PracticeAttempt @relation(fields: [attemptId], references: [id], onDelete: Restrict)
+
+  @@index([eligibleForRanking, effectiveWpm(sort: Desc)])
+  @@map("practice_results")
+}
+
+model PracticeKeyStat {
+  attemptId       String   @map("attempt_id") @db.Uuid
+  keyLabel        String   @map("key_label") @db.VarChar(32)
+  attempts        Int
+  correctFirstTry Int      @map("correct_first_try")
+  mistakes        Int
+  avgLatencyMs    Decimal? @map("avg_latency_ms") @db.Decimal(10, 2)
+
+  attempt PracticeAttempt @relation(fields: [attemptId], references: [id], onDelete: Restrict)
+
+  @@id([attemptId, keyLabel])
+  @@map("practice_key_stats")
+}
+
+model LessonProgress {
+  userId        String    @map("user_id") @db.Uuid
+  lessonId      String    @map("lesson_id") @db.Uuid
+  bestScore     Int?      @map("best_score")
+  bestStars     Int?      @map("best_stars") @db.SmallInt
+  bestWpm       Decimal?  @map("best_wpm") @db.Decimal(10, 2)
+  bestAttemptId String?   @map("best_attempt_id") @db.Uuid
+  passedAt      DateTime? @map("passed_at") @db.Timestamptz(6)
+  attemptsCount Int       @default(0) @map("attempts_count")
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user        User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  lesson      Lesson           @relation(fields: [lessonId], references: [id], onDelete: Restrict)
+  bestAttempt PracticeAttempt? @relation(fields: [bestAttemptId], references: [id], onDelete: Restrict)
+
+  @@id([userId, lessonId])
+  @@map("lesson_progress")
+}
+
+model PracticePartialSnapshot {
+  attemptId         String   @id @map("attempt_id") @db.Uuid
+  cursorPosition    Int      @map("cursor_position")
+  activeTimeMs      BigInt   @map("active_time_ms")
+  partialMetricJson Json     @map("partial_metric_json")
+  capturedAt        DateTime @default(now()) @map("captured_at") @db.Timestamptz(6)
+
+  attempt PracticeAttempt @relation(fields: [attemptId], references: [id], onDelete: Restrict)
+
+  @@index([capturedAt])
+  @@map("practice_partial_snapshots")
+}
+
+model AttemptFinalizationRequest {
+  attemptId      String                @map("attempt_id") @db.Uuid
+  operation      FinalizationOperation
+  idempotencyKey String                @map("idempotency_key") @db.VarChar(160)
+  requestHash    String                @map("request_hash") @db.VarChar(64)
+  responseJson   Json                  @map("response_json")
+  httpStatus     Int                   @map("http_status")
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  attempt PracticeAttempt @relation(fields: [attemptId], references: [id], onDelete: Restrict)
+
+  @@id([attemptId, operation, idempotencyKey])
+  @@map("attempt_finalization_requests")
+}
+
+model AuthRateLimit {
+  keyHash     String   @id @map("key_hash") @db.VarChar(64)
+  windowStart DateTime @map("window_start") @db.Timestamptz(6)
+  count       Int
+
+  @@index([windowStart])
+  @@map("auth_rate_limits")
+}

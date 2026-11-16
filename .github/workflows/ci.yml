@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: keycat_ci
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: keycat_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U keycat_ci -d keycat_ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://keycat_ci:ci-only-password@127.0.0.1:5432/keycat_ci
+      TEST_DATABASE_URL: postgresql://keycat_ci:ci-only-password@127.0.0.1:5432/keycat_ci
+      API_PORT: 3100
+      AUTH_JWT_SECRET: ci-only-auth-secret-at-least-32-characters-long
+      WEB_ORIGIN: http://127.0.0.1:5173
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.20.0
+      - name: Enable pnpm
+        run: corepack enable
+      - name: Install
+        run: corepack pnpm install --frozen-lockfile
+      - name: Generate Prisma client
+        run: corepack pnpm --dir apps/api prisma:generate
+      - name: Apply migrations to isolated CI database
+        run: corepack pnpm --dir apps/api prisma:migrate:deploy
+      - name: Lint
+        run: corepack pnpm lint
+      - name: Typecheck
+        run: corepack pnpm typecheck
+      - name: Unit and API smoke tests
+        run: corepack pnpm test
+      - name: Build
+        run: corepack pnpm build
+      - name: Format
+        run: corepack pnpm format:check

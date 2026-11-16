@@ -1,0 +1,31 @@
+{
+  "name": "keycat",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@12.18.0",
+  "engines": {
+    "node": ">=22.18.0 <27"
+  },
+  "scripts": {
+    "dev:web": "pnpm --dir apps/web dev",
+    "dev:api": "pnpm --dir apps/api dev",
+    "build": "pnpm --dir packages/typing-core build && pnpm --dir apps/api build && pnpm --dir apps/web build",
+    "typecheck": "pnpm --dir packages/typing-core build && pnpm --dir apps/api typecheck && pnpm --dir apps/web typecheck",
+    "lint": "eslint .",
+    "test": "pnpm --dir packages/typing-core test && pnpm --dir apps/web test && pnpm --dir apps/api test",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,css,html,md,yaml,yml}\"",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,css,html,md,yaml,yml}\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "^8.0.0"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.119.0"
+  }
+}

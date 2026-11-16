@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+apps/api/src/generated/
+.env
+.env.*
+!.env.example
+!.env.local.example
+.pnpm-store/
+.corepack/
+.DS_Store
+Thumbs.db
+.agents/
